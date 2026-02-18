@@ -1,18 +1,14 @@
-name: IPL Auction Docker CI
+name: IPL Auction CI
 
 on:
   push:
+    # Run on ALL branches - including new ones
     branches:
-      - main
-      - develop
-      - beta
-      - prod
+      - '**'
   pull_request:
+    # Run on PRs to ALL branches
     branches:
-      - main
-      - develop
-      - beta
-      - prod
+      - '**'
 
 jobs:
   test:
@@ -61,7 +57,14 @@ jobs:
       run: |
         python manage.py test --verbosity=2
 
-  # Build and push Docker image
+    # Step 6: Show branch info
+    - name: Show branch info
+      run: |
+        echo "Running tests on branch: ${{ github.ref }}"
+        echo "Commit: ${{ github.sha }}"
+        echo "Author: ${{ github.actor }}"
+
+  # Build Docker image (runs on all branches)
   build:
     needs: test
     runs-on: ubuntu-latest
@@ -76,18 +79,4 @@ jobs:
     - name: Build Docker image
       run: |
         docker build -t ipl-auction:${{ github.sha }} .
-        docker tag ipl-auction:${{ github.sha }} ipl-auction:latest
-
-    # Uncomment to push to Docker Hub or ECR
-    # - name: Configure AWS credentials
-    #   uses: aws-actions/configure-aws-credentials@v4
-    #   with:
-    #     aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-    #     aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-    #     aws-region: ap-south-1
-    #
-    # - name: Push to Amazon ECR
-    #   run: |
-    #     aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-south-1.amazonaws.com
-    #     docker tag ipl-auction:${{ github.sha }} ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-south-1.amazonaws.com/ipl-auction:${{ github.sha }}
-    #     docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-south-1.amazonaws.com/ipl-auction:${{ github.sha }}
+        echo "Built image for branch: ${{ github.ref }}"
