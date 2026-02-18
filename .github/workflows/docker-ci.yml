@@ -23,62 +23,48 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    # Step 2: Set up Docker Buildx
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+    # Step 2: Set up Python
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
 
-    # Step 3: Build and start containers
-    - name: Build and run Docker Compose
+    # Step 3: Install dependencies
+    - name: Install dependencies
       run: |
-        docker compose up -d --build
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
 
-    # Step 4: Wait for services to be ready
-    - name: Wait for MySQL
-      run: |
-        echo "Waiting for MySQL to be ready..."
-        for i in {1..30}; do
-          if docker compose exec -T db mysqladmin ping -h localhost -u root -proot --silent; then
-            echo "MySQL is ready!"
-            break
-          fi
-          sleep 2
-        done
-
-    # Step 5: Run migrations
+    # Step 4: Run migrations (connects to RDS)
     - name: Run migrations
+      env:
+        DB_NAME: ${{ secrets.DB_NAME || 'ipl_auction' }}
+        DB_USER: ${{ secrets.DB_USER }}
+        DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        DB_HOST: ${{ secrets.DB_HOST }}
+        DB_PORT: ${{ secrets.DB_PORT || '3306' }}
+        SECRET_KEY: ${{ secrets.SECRET_KEY || 'ci-secret-key' }}
+        DEBUG: "False"
       run: |
-        docker compose exec -T web python manage.py migrate
+        python manage.py migrate
 
-    # Step 6: Run tests
+    # Step 5: Run tests (connects to RDS)
     - name: Run tests
+      env:
+        DB_NAME: ${{ secrets.DB_NAME || 'ipl_auction' }}
+        DB_USER: ${{ secrets.DB_USER }}
+        DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        DB_HOST: ${{ secrets.DB_HOST }}
+        DB_PORT: ${{ secrets.DB_PORT || '3306' }}
+        SECRET_KEY: ${{ secrets.SECRET_KEY || 'ci-secret-key' }}
+        DEBUG: "False"
       run: |
-        docker compose exec -T web python manage.py test --verbosity=2
+        python manage.py test --verbosity=2
 
-    # Step 7: Test API endpoints
-    - name: Test API endpoints
-      run: |
-        # Wait for web service
-        sleep 5
-        curl -s http://localhost:8000/api/players/ || true
-        curl -s http://localhost:8000/api/teams/ || true
-
-    # Step 8: Build Docker image for registry
-    - name: Build Docker image
-      run: |
-        docker build -t ipl-auction:${{ github.sha }} .
-        docker tag ipl-auction:${{ github.sha }} ipl-auction:latest
-
-    # Step 9: Cleanup
-    - name: Cleanup
-      if: always()
-      run: |
-        docker compose down -v
-
-  # Optional: Push to registry (only on main branch)
-  push:
+  # Build and push Docker image
+  build:
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
     
     steps:
     - name: Checkout code
@@ -87,20 +73,21 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
-    - name: Build image
+    - name: Build Docker image
       run: |
         docker build -t ipl-auction:${{ github.sha }} .
+        docker tag ipl-auction:${{ github.sha }} ipl-auction:latest
 
-    # Uncomment below to push to Docker Hub or GitHub Container Registry
-    # - name: Log in to Docker Hub
-    #   uses: docker/login-action@v3
+    # Uncomment to push to Docker Hub or ECR
+    # - name: Configure AWS credentials
+    #   uses: aws-actions/configure-aws-credentials@v4
     #   with:
-    #     username: ${{ secrets.DOCKER_USERNAME }}
-    #     password: ${{ secrets.DOCKER_PASSWORD }}
+    #     aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+    #     aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    #     aws-region: ap-south-1
     #
-    # - name: Push to Docker Hub
+    # - name: Push to Amazon ECR
     #   run: |
-    #     docker tag ipl-auction:${{ github.sha }} ${{ secrets.DOCKER_USERNAME }}/ipl-auction:${{ github.sha }}
-    #     docker tag ipl-auction:${{ github.sha }} ${{ secrets.DOCKER_USERNAME }}/ipl-auction:latest
-    #     docker push ${{ secrets.DOCKER_USERNAME }}/ipl-auction:${{ github.sha }}
-    #     docker push ${{ secrets.DOCKER_USERNAME }}/ipl-auction:latest
+    #     aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-south-1.amazonaws.com
+    #     docker tag ipl-auction:${{ github.sha }} ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-south-1.amazonaws.com/ipl-auction:${{ github.sha }}
+    #     docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-south-1.amazonaws.com/ipl-auction:${{ github.sha }}
