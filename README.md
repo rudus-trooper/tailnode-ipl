@@ -24,12 +24,12 @@ A Django REST API for IPL player auctions with comprehensive test coverage.
 Create a `.env` file:
 
 ```bash
-DB_NAME=ipl_auction
-DB_USER=admin
-DB_PASSWORD=your_rds_password
-DB_HOST=your-rds-endpoint.amazonaws.com
+DB_NAME=
+DB_USER=
+DB_PASSWORD=
+DB_HOST=
 DB_PORT=3306
-SECRET_KEY=your-secret-key
+SECRET_KEY=
 DEBUG=True
 ```
 
@@ -105,12 +105,21 @@ GitHub Actions runs tests on **every branch** automatically. Workflows use concu
 
 2. Enable GitHub Actions (Actions tab → "Enable workflows")
 
-3. Push any branch - tests run automatically
+3. Configure branch protection (Settings → Branches → Add rule):
+   - Branch name pattern: `main`
+   - Check "Require status checks to pass before merging"
+   - Search for and select "test" (the job name from the workflow)
+   - Check "Require branches to be up to date before merging"
+   - Save changes
+
+4. Push any branch - tests run automatically
 
 ```bash
 git checkout -b feature/new-feature
 git push origin feature/new-feature
 ```
+
+**Note:** Once branch protection is enabled, PRs cannot be merged until all tests pass.
 
 ## Project Structure
 
