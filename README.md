@@ -1,51 +1,59 @@
 # IPL Auction API
 
-Minimal Django REST API with MySQL for IPL Auction demo.
+A Django REST API for IPL player auctions with comprehensive test coverage.
 
-## Quick Setup
+## Features
 
-### 1. Create MySQL Database
+- Live bidding system with race condition protection
+- Team purse management (₹125 Crore budget)
+- Player categorization (Capped/Uncapped)
+- MySQL ORM with transaction locks
+- Docker containerization
+- Automated CI/CD with GitHub Actions
+
+## Quick Start
+
+### Prerequisites
+
+- Docker & Docker Compose
+- AWS RDS MySQL instance
+- GitHub account (for CI/CD)
+
+### Configuration
+
+Create a `.env` file:
 
 ```bash
-mysql -u root -p -e "CREATE DATABASE ipl_auction;"
+DB_NAME=
+DB_USER=
+DB_PASSWORD=
+DB_HOST=
+DB_PORT=3306
+SECRET_KEY=
+DEBUG=True
 ```
 
-### 2. Install & Run
+### Run Locally
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Create migrations and run them
-python manage.py makemigrations
-python manage.py migrate
-
-# Run server
-python manage.py runserver
-
-# Populate data via API (in another terminal)
+docker compose up -d
+docker compose exec web python manage.py migrate
 curl -X POST http://localhost:8000/api/populate/
-
-# Run tests (in another terminal while server is running)
-python manage.py test
-
-# Run specific test categories
-python manage.py test auction.tests.PlayerBasePriceUnitTest      # Unit tests
-python manage.py test auction.tests.BidIntegrationTest            # Integration tests
-python manage.py test auction.tests.CompleteAuctionFlowTest       # E2E tests
 ```
+
+The API is available at `http://localhost:8000`
 
 ## API Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/populate/` | POST | Create teams & players with real IPL data |
+| `/api/populate/` | POST | Seed database with IPL teams and players |
 | `/api/players/` | GET | List all players |
-| `/api/players/active/` | GET | Get active player |
-| `/api/players/<id>/bid/` | POST | Place a bid |
-| `/api/teams/` | GET | List all teams |
+| `/api/players/active/` | GET | Get current player under auction |
+| `/api/players/<id>/bid/` | POST | Place a bid on a player |
+| `/api/teams/` | GET | List all teams with purse balance |
 
-## Place a Bid
+### Place a Bid
 
 ```bash
 curl -X POST http://localhost:8000/api/players/1/bid/ \
@@ -53,56 +61,84 @@ curl -X POST http://localhost:8000/api/players/1/bid/ \
   -d '{"team_id": 1, "amount": 15000000}'
 ```
 
-## Test Cases (Matches Slides)
+## Testing
 
-| Slide Topic | Test Name |
-|-------------|-----------|
-| **Unit: Base Price** | `test_capped_player_base_price` (₹2Cr) |
-| **Unit: Base Price** | `test_uncapped_player_base_price` (₹30L) |
-| **Integration: Validation** | `test_bid_below_base_price_returns_400` |
-| **Integration: Security** | `test_bid_exceeding_purse_returns_400` |
-| **Integration: State** | `test_bid_on_sold_player_returns_403` |
-| **Integration: Purse Update** | `test_bid_updates_purse` |
-| **E2E: Full Flow** | `test_complete_auction_flow` |
-| **E2E: Race Condition** | `test_concurrent_bid_protection` |
-| **E2E: AAA Pattern** | `test_aaa_pattern_bid` |
+```bash
+# Run all tests
+docker compose exec web python manage.py test
+
+# Run specific test category
+docker compose exec web python manage.py test auction.tests.BidIntegrationTest
+```
+
+### Test Coverage
+
+| Category | Tests |
+|----------|-------|
+| Unit | Player base prices, Team purse calculations |
+| Integration | Bid validation, Purse updates, Error handling |
+| E2E | Complete auction flow, Race condition handling |
+
+## Architecture
+
+```
+┌─────────────┐      HTTP       ┌─────────────┐      SQL       ┌─────────────┐
+│   Client    │ ──────────────▶ │   Django    │ ──────────────▶ │  AWS RDS    │
+│  (Browser)  │ ◀────────────── │    API      │ ◀────────────── │   MySQL     │
+└─────────────┘                 └─────────────┘                └─────────────┘
+                                       │
+                                       ▼
+                               ┌─────────────┐
+                               │  Docker     │
+                               │  Container  │
+                               └─────────────┘
+```
+
+## CI/CD Pipeline
+
+GitHub Actions runs tests on **every branch** automatically. Workflows use concurrency control to prevent test database conflicts when multiple branches run simultaneously.
+
+### Setup
+
+1. Add repository secrets in GitHub (Settings → Secrets → Actions):
+   - `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT`, `SECRET_KEY`
+
+2. Enable GitHub Actions (Actions tab → "Enable workflows")
+
+3. Configure branch protection (Settings → Branches → Add rule):
+   - Branch name pattern: `main`
+   - Check "Require status checks to pass before merging"
+   - Search for and select "test" (the job name from the workflow)
+   - Check "Require branches to be up to date before merging"
+   - Save changes
+
+4. Push any branch - tests run automatically
+
+```bash
+git checkout -b feature/new-feature
+git push origin feature/new-feature
+```
+
+**Note:** Once branch protection is enabled, PRs cannot be merged until all tests pass.
 
 ## Project Structure
 
 ```
 ipl_auction/
 ├── auction/
-│   ├── models.py          # Team, Player (MySQL via ORM)
-│   ├── views.py           # API views with transaction locks
+│   ├── models.py          # Team, Player models
+│   ├── views.py           # API endpoints with transaction locks
 │   └── tests.py           # Unit, Integration, E2E tests
 ├── ipl_auction/
-│   ├── settings.py        # MySQL config
-│   └── urls.py
-├── manage.py
-└── requirements.txt
+│   ├── settings.py        # Django settings
+│   └── urls.py            # URL routing
+├── .github/workflows/
+│   └── docker-ci.yml      # CI pipeline configuration
+├── Dockerfile             # Application container
+├── docker-compose.yml     # Service orchestration
+└── requirements.txt       # Python dependencies
 ```
 
-## Configure MySQL Credentials
+## License
 
-Edit `ipl_auction/settings.py`:
-
-```python
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'ipl_auction',
-        'USER': 'your_username',      # <-- Change this
-        'PASSWORD': 'your_password',  # <-- Change this
-        'HOST': 'localhost',
-        'PORT': '3306',
-    }
-}
-```
-
-## Bid Validation Rules
-
-| Rule | HTTP Status |
-|------|-------------|
-| Bid < Current Price | 400 Bad Request |
-| Bid > Purse Remaining | 400 Bad Request |
-| Player Already Sold | 403 Forbidden |
+MIT
