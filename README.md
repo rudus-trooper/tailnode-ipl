@@ -10,7 +10,17 @@ Minimal Django REST API with MySQL for IPL Auction demo.
 mysql -u root -p -e "CREATE DATABASE ipl_auction;"
 ```
 
-### 2. Install & Run
+### 2. Configure Environment
+
+```bash
+# Copy the example env file
+cp .env.example .env
+
+# Edit .env with your MySQL credentials
+nano .env
+```
+
+### 3. Install & Run
 
 ```bash
 # Install dependencies
