@@ -1,108 +1,155 @@
 # IPL Auction API
 
-Minimal Django REST API with MySQL for IPL Auction demo.
+Dockerized Django REST API for IPL Auction demo. Connects to **AWS RDS MySQL**.
 
-## Quick Setup
+## Quick Start
 
-### 1. Create MySQL Database
+### 1. Configure Environment
 
 ```bash
-mysql -u root -p -e "CREATE DATABASE ipl_auction;"
+cp .env.example .env
+# Edit .env with your RDS credentials
 ```
 
-### 2. Install & Run
+### 2. Run with Docker
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Create migrations and run them
-python manage.py makemigrations
-python manage.py migrate
-
-# Run server
-python manage.py runserver
-
-# Populate data via API (in another terminal)
+docker compose up -d --build
+docker compose exec web python manage.py migrate
 curl -X POST http://localhost:8000/api/populate/
-
-# Run tests (in another terminal while server is running)
-python manage.py test
-
-# Run specific test categories
-python manage.py test auction.tests.PlayerBasePriceUnitTest      # Unit tests
-python manage.py test auction.tests.BidIntegrationTest            # Integration tests
-python manage.py test auction.tests.CompleteAuctionFlowTest       # E2E tests
 ```
+
+---
+
+## GitHub Actions CI/CD Setup
+
+This pipeline runs tests on **EVERY branch** automatically - no configuration needed for new branches!
+
+### Step 1: Add Repository Secrets
+
+Go to **GitHub Repo → Settings → Secrets and variables → Actions → New repository secret**
+
+Add these secrets:
+
+| Secret Name | Value |
+|-------------|-------|
+| `DB_NAME` | `ipl_auction` |
+| `DB_USER` | `admin` |
+| `DB_PASSWORD` | `your_rds_password` |
+| `DB_HOST` | `database-1.c9mmuaqii5fl.ap-south-1.rds.amazonaws.com` |
+| `DB_PORT` | `3306` |
+| `SECRET_KEY` | `any-random-secret-key` |
+
+### Step 2: Enable GitHub Actions
+
+1. Go to **GitHub Repo → Actions** tab
+2. Click **"I understand my workflows, go ahead and enable them"**
+3. That's it! Actions are now enabled
+
+### Step 3: Push Any Branch
+
+```bash
+# Create any new branch
+git checkout -b feature/my-new-feature
+git commit -m "Add new feature"
+git push origin feature/my-new-feature
+
+# Pipeline will automatically run!
+```
+
+### How It Works
+
+```yaml
+on:
+  push:
+    branches:
+      - '**'   # ← This matches ALL branches!
+```
+
+| Action | Pipeline Behavior |
+|--------|-------------------|
+| Push to `main` | ✅ Tests run |
+| Push to `develop` | ✅ Tests run |
+| Push to `feature/xyz` | ✅ Tests run |
+| Push to `hotfix/abc` | ✅ Tests run |
+| Create PR from any branch | ✅ Tests run |
+
+---
+
+## Pipeline Stages
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  1. Checkout Code                                       │
+│  2. Set up Python 3.10                                  │
+│  3. Install dependencies                                │
+│  4. Run migrations (connects to RDS)                    │
+│  5. Run tests (connects to RDS)                         │
+│  6. Show branch info                                    │
+│  7. Build Docker image                                  │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
 
 ## API Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/populate/` | POST | Create teams & players with real IPL data |
+| `/api/populate/` | POST | Create teams & players |
 | `/api/players/` | GET | List all players |
 | `/api/players/active/` | GET | Get active player |
 | `/api/players/<id>/bid/` | POST | Place a bid |
 | `/api/teams/` | GET | List all teams |
 
-## Place a Bid
+---
+
+## Run Tests Locally
 
 ```bash
-curl -X POST http://localhost:8000/api/players/1/bid/ \
-  -H "Content-Type: application/json" \
-  -d '{"team_id": 1, "amount": 15000000}'
+# Docker
+docker compose exec web python manage.py test
+
+# Local
+python manage.py test
 ```
 
-## Test Cases (Matches Slides)
-
-| Slide Topic | Test Name |
-|-------------|-----------|
-| **Unit: Base Price** | `test_capped_player_base_price` (₹2Cr) |
-| **Unit: Base Price** | `test_uncapped_player_base_price` (₹30L) |
-| **Integration: Validation** | `test_bid_below_base_price_returns_400` |
-| **Integration: Security** | `test_bid_exceeding_purse_returns_400` |
-| **Integration: State** | `test_bid_on_sold_player_returns_403` |
-| **Integration: Purse Update** | `test_bid_updates_purse` |
-| **E2E: Full Flow** | `test_complete_auction_flow` |
-| **E2E: Race Condition** | `test_concurrent_bid_protection` |
-| **E2E: AAA Pattern** | `test_aaa_pattern_bid` |
+---
 
 ## Project Structure
 
 ```
 ipl_auction/
 ├── auction/
-│   ├── models.py          # Team, Player (MySQL via ORM)
-│   ├── views.py           # API views with transaction locks
-│   └── tests.py           # Unit, Integration, E2E tests
-├── ipl_auction/
-│   ├── settings.py        # MySQL config
-│   └── urls.py
-├── manage.py
-└── requirements.txt
+│   ├── models.py
+│   ├── views.py
+│   └── tests.py
+├── .github/workflows/
+│   └── docker-ci.yml      # Runs on ALL branches
+├── .env.example
+├── Dockerfile
+├── docker-compose.yml
+└── README.md
 ```
 
-## Configure MySQL Credentials
+---
 
-Edit `ipl_auction/settings.py`:
+## Troubleshooting
 
-```python
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'ipl_auction',
-        'USER': 'your_username',      # <-- Change this
-        'PASSWORD': 'your_password',  # <-- Change this
-        'HOST': 'localhost',
-        'PORT': '3306',
-    }
-}
+### GitHub Actions not running?
+
+1. Check **Settings → Actions → General → Actions permissions**
+2. Ensure **"Allow all actions and reusable workflows"** is selected
+3. Check if secrets are set correctly
+
+### Can't connect to RDS from GitHub Actions?
+
+1. Verify RDS security group allows GitHub Actions IPs
+2. Or temporarily allow `0.0.0.0/0` for testing
+3. Check secrets are correctly set in GitHub
+
+```bash
+# Test RDS connection
+mysql -h database-1.c9mmuaqii5fl.ap-south-1.rds.amazonaws.com \
+      -u admin -p ipl_auction
 ```
-
-## Bid Validation Rules
-
-| Rule | HTTP Status |
-|------|-------------|
-| Bid < Current Price | 400 Bad Request |
-| Bid > Purse Remaining | 400 Bad Request |
-| Player Already Sold | 403 Forbidden |

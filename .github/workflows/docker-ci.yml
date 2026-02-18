@@ -1,0 +1,82 @@
+name: IPL Auction CI
+
+on:
+  push:
+    # Run on ALL branches - including new ones
+    branches:
+      - '**'
+  pull_request:
+    # Run on PRs to ALL branches
+    branches:
+      - '**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    # Step 1: Checkout code
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # Step 2: Set up Python
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    # Step 3: Install dependencies
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    # Step 4: Run migrations (connects to RDS)
+    - name: Run migrations
+      env:
+        DB_NAME: ${{ secrets.DB_NAME || 'ipl_auction' }}
+        DB_USER: ${{ secrets.DB_USER }}
+        DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        DB_HOST: ${{ secrets.DB_HOST }}
+        DB_PORT: ${{ secrets.DB_PORT || '3306' }}
+        SECRET_KEY: ${{ secrets.SECRET_KEY || 'ci-secret-key' }}
+        DEBUG: "False"
+      run: |
+        python manage.py migrate
+
+    # Step 5: Run tests (connects to RDS)
+    - name: Run tests
+      env:
+        DB_NAME: ${{ secrets.DB_NAME || 'ipl_auction' }}
+        DB_USER: ${{ secrets.DB_USER }}
+        DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        DB_HOST: ${{ secrets.DB_HOST }}
+        DB_PORT: ${{ secrets.DB_PORT || '3306' }}
+        SECRET_KEY: ${{ secrets.SECRET_KEY || 'ci-secret-key' }}
+        DEBUG: "False"
+      run: |
+        python manage.py test --verbosity=2
+
+    # Step 6: Show branch info
+    - name: Show branch info
+      run: |
+        echo "Running tests on branch: ${{ github.ref }}"
+        echo "Commit: ${{ github.sha }}"
+        echo "Author: ${{ github.actor }}"
+
+  # Build Docker image (runs on all branches)
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build Docker image
+      run: |
+        docker build -t ipl-auction:${{ github.sha }} .
+        echo "Built image for branch: ${{ github.ref }}"
