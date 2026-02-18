@@ -2,16 +2,20 @@ name: IPL Auction CI
 
 on:
   push:
-    # Run on ALL branches - including new ones
     branches:
       - '**'
   pull_request:
-    # Run on PRs to ALL branches
     branches:
       - '**'
 
+# Prevent race conditions - only one "test" job runs at a time
+concurrency:
+  group: test-database
+  cancel-in-progress: false
+
 jobs:
   test:
+    name: Run Tests
     runs-on: ubuntu-latest
     
     steps:
