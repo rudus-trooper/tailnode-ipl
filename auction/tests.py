@@ -23,7 +23,7 @@ class PlayerBasePriceUnitTest(TestCase):
         result = player.get_min_base_price()
 
         # Assert
-        self.assertNotEqual(result, expected_price)
+        self.assertEqual(result, expected_price)
 
     def test_uncapped_player_base_price(self):
         """Uncapped players: ₹30 Lakh minimum"""
