@@ -27,7 +27,7 @@ class PlayerBasePriceUnitTestMocked(SimpleTestCase):
         result = player.get_min_base_price()
 
         # Assert
-        self.assertNotEqual(result, 20000000)
+        self.assertEqual(result, 20000000)
 
 
 class TeamPurseUnitTestMocked(SimpleTestCase):
