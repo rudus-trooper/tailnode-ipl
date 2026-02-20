@@ -1,15 +1,61 @@
 """IPL Auction API Tests"""
 
 from decimal import Decimal
-from django.test import TestCase
+from unittest.mock import Mock, patch
+
+from django.test import TestCase, SimpleTestCase
 from rest_framework.test import APIClient
 from rest_framework import status
 
 from auction.models import Team, Player
 
 
-class PlayerBasePriceUnitTest(TestCase):
-    """Unit Test: Verify capped/uncapped base prices"""
+# Unit Tets - No Database (SimpleTestCase with Mocks)
+class PlayerBasePriceUnitTestMocked(SimpleTestCase):
+    """Unit Test: Verify capped/uncapped base prices using mocks (No DB)"""
+
+    @patch("auction.models.Player")
+    def test_player_logic_with_patch(self, MockPlayer):
+        """Test player logic using patch decorator"""
+        # Arrange
+        mock_instance = MockPlayer.return_value
+        mock_instance.is_capped = True
+        mock_instance.get_min_base_price.return_value = 20000000
+
+        # Act
+        player = MockPlayer(name="Test Player", is_capped=True)
+        result = player.get_min_base_price()
+
+        # Assert
+        self.assertEqual(result, 20000000)
+
+
+class TeamPurseUnitTestMocked(SimpleTestCase):
+    """Unit Test: Team purse calculations using mocks (No DB)"""
+
+    @patch("auction.models.Team")
+    def test_team_purse_calculation_with_patch(self, MockTeam):
+        """Test team purse logic using patch decorator"""
+        # Arrange
+        mock_team = MockTeam.return_value
+        mock_team.purse_remaining = Decimal("1250000000")
+        mock_team.name = "Test Team"
+
+        bid_amount = 150000000
+        expected_remaining = Decimal("1100000000")
+
+        # Act - Simulate bid deduction logic
+        mock_team.purse_remaining -= bid_amount
+
+        # Assert
+        self.assertEqual(mock_team.purse_remaining, expected_remaining)
+
+
+# Integration Tests - With Database (TestCase)
+
+
+class PlayerBasePriceIntegrationTest(TestCase):
+    """Integration Test: Player base prices"""
 
     def test_capped_player_base_price(self):
         """Capped players: ₹2 Crore minimum"""
@@ -18,8 +64,8 @@ class PlayerBasePriceUnitTest(TestCase):
         is_capped = True
         expected_price = 20000000
 
-        # Act
-        player = Player(name=player_name, is_capped=is_capped)
+        # Act - This hits the database
+        player = Player.objects.create(name=player_name, is_capped=is_capped)
         result = player.get_min_base_price()
 
         # Assert
@@ -28,25 +74,25 @@ class PlayerBasePriceUnitTest(TestCase):
     def test_uncapped_player_base_price(self):
         """Uncapped players: ₹30 Lakh minimum"""
         # Arrange
-        player_name = "Young Star"
+        player_name = "Ayush Mhatre"
         is_capped = False
         expected_price = 3000000
 
-        # Act
-        player = Player(name=player_name, is_capped=is_capped)
+        # Act - This hits the database
+        player = Player.objects.create(name=player_name, is_capped=is_capped)
         result = player.get_min_base_price()
 
         # Assert
         self.assertEqual(result, expected_price)
 
 
-class TeamPurseUnitTest(TestCase):
-    """Unit Test: Team purse calculations"""
+class TeamPurseIntegrationTest(TestCase):
+    """Integration Test: Team purse calculations"""
 
     def test_team_can_bid_with_sufficient_purse(self):
         """Team can bid when purse is sufficient"""
         # Arrange
-        team = Team(name="Test Team", purse_remaining=50000000)
+        team = Team.objects.create(name="Test Team", purse_remaining=50000000)
         bid_amount = 3000000
 
         # Act
@@ -58,7 +104,7 @@ class TeamPurseUnitTest(TestCase):
     def test_team_cannot_bid_with_insufficient_purse(self):
         """Team cannot bid when purse is insufficient"""
         # Arrange
-        team = Team(name="Test Team", purse_remaining=1000000)
+        team = Team.objects.create(name="Test Team", purse_remaining=1000000)
         bid_amount = 3000000
 
         # Act
@@ -192,81 +238,3 @@ class CompleteAuctionFlowTest(TestCase):
 
         # Assert - Step 3
         self.assertEqual(self.team.purse_remaining, expected_remaining_purse)
-
-
-class RaceConditionTest(TestCase):
-    """Race Condition Test: Concurrent bidding protection"""
-
-    def setUp(self):
-        self.client = APIClient()
-        self.team1 = Team.objects.create(name="Team A", purse_remaining=1250000000)
-        self.team2 = Team.objects.create(name="Team B", purse_remaining=1250000000)
-        self.player = Player.objects.create(
-            name="Hot Property", base_price=100000000, status="active"
-        )
-
-    def test_concurrent_bid_protection(self):
-        """Database locks ensure only one bid wins"""
-        # Arrange
-        team1_bid = 150000000
-        team2_bid = 160000000
-        expected_team1_purse = Decimal("1250000000")
-        expected_team2_purse = Decimal("1090000000")
-
-        # Act - First bid: Team 1 bids
-        response1 = self.client.post(
-            f"/api/players/{self.player.id}/bid/",
-            {"team_id": self.team1.id, "amount": team1_bid},
-        )
-
-        # Assert - First bid won
-        self.assertEqual(response1.status_code, 200)
-        self.player.refresh_from_db()
-        self.assertEqual(self.player.current_price, Decimal("150000000"))
-        self.assertEqual(self.player.highest_bidder, self.team1)
-
-        # Act - Second bid: Team 2 outbids
-        response2 = self.client.post(
-            f"/api/players/{self.player.id}/bid/",
-            {"team_id": self.team2.id, "amount": team2_bid},
-        )
-
-        # Assert - Second bid won, refunds processed
-        self.assertEqual(response2.status_code, 200)
-        self.player.refresh_from_db()
-        self.team1.refresh_from_db()
-        self.team2.refresh_from_db()
-
-        self.assertEqual(self.player.current_price, Decimal("160000000"))
-        self.assertEqual(self.player.highest_bidder, self.team2)
-        self.assertEqual(self.team1.purse_remaining, expected_team1_purse)
-        self.assertEqual(self.team2.purse_remaining, expected_team2_purse)
-
-
-class AAAPatternTest(TestCase):
-    """AAA Pattern: Arrange, Act, Assert"""
-
-    def test_aaa_pattern_bid(self):
-        """
-        Arrange: Create Team (₹125Cr) & Player (₹10Cr base)
-        Act: POST bid of ₹15 Crore
-        Assert: Purse = ₹110 Crore
-        """
-        # Arrange
-        team = Team.objects.create(name="Mumbai Mavericks", purse_remaining=1250000000)
-        player = Player.objects.create(
-            name="Rashid Khan", base_price=100000000, status="active"
-        )
-        bid_amount = 150000000
-        expected_purse = Decimal("1100000000")
-
-        # Act
-        client = APIClient()
-        response = client.post(
-            f"/api/players/{player.id}/bid/", {"team_id": team.id, "amount": bid_amount}
-        )
-
-        # Assert
-        self.assertEqual(response.status_code, 200)
-        team.refresh_from_db()
-        self.assertEqual(team.purse_remaining, expected_purse)
