@@ -69,9 +69,12 @@ docker compose exec web python manage.py test
 
 # Run specific test category
 docker compose exec web python manage.py test auction.tests.BidIntegrationTest
-```
 
-### Test Coverage
+# Run tests with coverage
+docker compose exec web coverage run --source='.' manage.py test
+docker compose exec web coverage report
+docker compose exec web coverage html
+```
 
 | Category | Tests |
 |----------|-------|
